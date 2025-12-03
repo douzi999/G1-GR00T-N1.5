@@ -46,7 +46,7 @@ class ArgsConfig:
     host: str = "localhost"
     """Host to connect to."""
 
-    port: int = 5555
+    port: int = 6666
     """Port to connect to."""
 
     plot: bool = False
@@ -55,7 +55,7 @@ class ArgsConfig:
     modality_keys: List[str] = field(default_factory=lambda: ["right_arm", "left_arm"])
     """Modality keys to evaluate."""
 
-    data_config: str = "fourier_gr1_arms_only"
+    data_config: str = "unitree_g1_inspire"
     """
     Data config to use, e.g. so100, fourier_gr1_arms_only, unitree_g1, etc.
     Or a path to a custom data config file. e.g. "module:ClassName" format.
@@ -80,7 +80,7 @@ class ArgsConfig:
     dataset_path: str = "demo_data/robot_sim.PickNPlace/"
     """Path to the dataset."""
 
-    embodiment_tag: Literal[tuple(EMBODIMENT_TAG_MAPPING.keys())] = "gr1"
+    embodiment_tag: Literal[tuple(EMBODIMENT_TAG_MAPPING.keys())] = "new_embodiment"
     """Embodiment tag to use."""
 
     model_path: str = None

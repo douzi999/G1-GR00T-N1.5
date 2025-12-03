@@ -342,6 +342,325 @@ class UnitreeG1FullBodyDataConfig(UnitreeG1DataConfig):
     action_indices = list(range(16))
 
 
+class G1_Dex3_xc(BaseDataConfig):
+    """
+    全新的完整身体配置类，完全独立，不影响原有配置
+    适用于需要全身控制的任务
+    """
+    video_keys = ["video.rs_view"]
+    
+    # 全身状态观测（7个部分）
+    state_keys = [
+        "state.left_leg",    # 腿部状态用于平衡观测
+        "state.right_leg", 
+        "state.waist",       # 腰部状态
+        "state.left_arm",    # 左臂状态
+        "state.left_hand",   # 左手状态  
+        "state.right_arm",   # 右臂状态
+        "state.right_hand",  # 右手状态
+    ]
+    
+    # 全身动作控制（7个部分）
+    action_keys = [
+        "action.left_leg",    # 左腿控制
+        "action.right_leg",   # 右腿控制
+        "action.waist",       # 腰部控制
+        "action.left_arm",    # 左臂控制
+        "action.left_hand",   # 左手控制
+        "action.right_arm",   # 右臂控制
+        "action.right_hand",  # 右手控制
+    ]
+    
+    language_keys = ["annotation.human.task_description"]
+    observation_indices = [0]      # 只使用当前观测
+    action_indices = list(range(16))  # 使用16个时间步的动作
+
+    def transform(self) -> ModalityTransform:
+        """独立的变换方法，完全适配全身控制"""
+        transforms = [
+            # 视频变换
+            VideoToTensor(apply_to=self.video_keys),
+            VideoCrop(apply_to=self.video_keys, scale=0.95),
+            VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
+            VideoColorJitter(
+                apply_to=self.video_keys,
+                brightness=0.3,
+                contrast=0.4,
+                saturation=0.5,
+                hue=0.08,
+            ),
+            VideoToNumpy(apply_to=self.video_keys),
+            
+            # 状态变换 - 全身状态
+            StateActionToTensor(apply_to=self.state_keys),
+            StateActionTransform(
+                apply_to=self.state_keys,
+                normalization_modes={key: "min_max" for key in self.state_keys},
+            ),
+            
+            # 动作变换 - 全身动作
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={key: "min_max" for key in self.action_keys},
+            ),
+            
+            # 合并变换
+            ConcatTransform(
+                video_concat_order=self.video_keys,
+                state_concat_order=self.state_keys,
+                action_concat_order=self.action_keys,
+            ),
+            
+            # 模型特定变换 - 适配全身维度
+            GR00TTransform(
+                state_horizon=len(self.observation_indices),
+                action_horizon=len(self.action_indices),
+                max_state_dim=64,    # 状态总维度：43维
+                max_action_dim=43,   # 动作总维度：43维
+            ),
+        ]
+        return ComposedModalityTransform(transforms=transforms)
+
+class G1_inspire_xc(BaseDataConfig):
+    """
+    只包含上半身（手臂+手部），26维状态/动作
+    4个摄像头视角
+    """
+    video_keys = [
+        "video.cam_left_high",
+        "video.cam_left_wrist", 
+        "video.cam_right_high",
+        "video.cam_right_wrist"
+    ]
+    
+    # 状态数据键 - 26维上半身
+    state_keys = [
+        "state.left_arm",     # 0-7: 左臂7关节
+        "state.right_arm",    # 7-14: 右臂7关节  
+        "state.left_hand",    # 14-20: 左手6关节
+        "state.right_hand"    # 20-26: 右手6关节
+    ]
+    
+    # 动作数据键 - 26维上半身
+    action_keys = [
+        "action.left_arm",    # 0-7: 左臂7关节
+        "action.right_arm",   # 7-14: 右臂7关节
+        "action.left_hand",   # 14-20: 左手6关节  
+        "action.right_hand"   # 20-26: 右手6关节
+    ]
+    
+    language_keys = ["annotation.human.task_description"]
+    observation_indices = [0]
+    action_indices = list(range(16))
+
+    def transform(self) -> ModalityTransform:
+        transforms = [
+            # 视频变换 - 应用到所有4个摄像头
+            VideoToTensor(apply_to=self.video_keys),
+            VideoCrop(apply_to=self.video_keys, scale=0.95),
+            VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
+            VideoColorJitter(
+                apply_to=self.video_keys,
+                brightness=0.3,
+                contrast=0.4,
+                saturation=0.5,
+                hue=0.08,
+            ),
+            VideoToNumpy(apply_to=self.video_keys),
+            
+            # 状态变换 - 26维上半身
+            StateActionToTensor(apply_to=self.state_keys),
+            StateActionTransform(
+                apply_to=self.state_keys,
+                normalization_modes={key: "min_max" for key in self.state_keys},
+            ),
+            
+            # 动作变换 - 26维上半身
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={key: "min_max" for key in self.action_keys},
+            ),
+            
+            # 合并变换
+            ConcatTransform(
+                video_concat_order=self.video_keys,
+                state_concat_order=self.state_keys,
+                action_concat_order=self.action_keys,
+            ),
+            
+            # 模型特定变换 - 适配26维动作空间
+            GR00TTransform(
+                state_horizon=len(self.observation_indices),
+                action_horizon=len(self.action_indices),
+                max_state_dim=64,    # 状态维度：26维
+                max_action_dim=64,   # 动作维度：26维
+            ),
+        ]
+        return ComposedModalityTransform(transforms=transforms)
+
+
+class UnitreeG1InspireDataConfig(BaseDataConfig):
+    """Unitree G1 + 因时（Inspire）灵巧手数据配置 - 仅手臂和手部"""
+    
+    video_keys = [
+        "video.cam_left_high",
+        "video.cam_left_wrist", 
+        "video.cam_right_high",
+        "video.cam_right_wrist"
+    ]
+    
+    state_keys = [
+        "state.left_arm",
+        "state.left_hand",
+        "state.right_arm",
+        "state.right_hand"
+    ]
+    
+    action_keys = [
+        "action.left_arm",
+        "action.left_hand",
+        "action.right_arm",
+        "action.right_hand"
+    ]
+    
+    language_keys = ["annotation.human.task_description"]
+    observation_indices = [0]
+    action_indices = list(range(16))  # 16步动作序列
+    
+    def transform(self) -> ModalityTransform:
+        """定义数据变换流程"""
+        transforms = [
+            # 视频变换
+            VideoToTensor(apply_to=self.video_keys),
+            VideoCrop(apply_to=self.video_keys, scale=0.95),
+            VideoResize(
+                apply_to=self.video_keys, 
+                height=224, 
+                width=224, 
+                interpolation="linear"
+            ),
+            VideoColorJitter(
+                apply_to=self.video_keys,
+                brightness=0.3,
+                contrast=0.4,
+                saturation=0.5,
+                hue=0.08,
+            ),
+            VideoToNumpy(apply_to=self.video_keys),
+            
+            # 状态变换
+            StateActionToTensor(apply_to=self.state_keys),
+            StateActionTransform(
+                apply_to=self.state_keys,
+                normalization_modes={key: "min_max" for key in self.state_keys},
+            ),
+            
+            # 动作变换
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={key: "min_max" for key in self.action_keys},
+            ),
+            
+            # 连接变换
+            ConcatTransform(
+                video_concat_order=self.video_keys,
+                state_concat_order=self.state_keys,
+                action_concat_order=self.action_keys,
+            ),
+            
+            # GR00T特定变换
+            GR00TTransform(
+                state_horizon=len(self.observation_indices),
+                action_horizon=len(self.action_indices),
+                max_state_dim=64,  # 状态维度
+                max_action_dim=26,  # 动作维度 (26个关节: 左臂7+左手6+右臂7+右手6)
+            ),
+        ]
+        
+        return ComposedModalityTransform(transforms=transforms)
+
+
+class UnitreeG1InspireData_2cameras_Config(BaseDataConfig):
+    """Unitree G1 + 因时（Inspire）灵巧手数据配置 - 仅手臂和手部"""
+    
+    video_keys = [
+        "video.cam_left_high",
+        "video.cam_right_high"
+    ]
+    
+    state_keys = [
+        "state.left_arm",
+        "state.left_hand",
+        "state.right_arm",
+        "state.right_hand"
+    ]
+    
+    action_keys = [
+        "action.left_arm",
+        "action.left_hand",
+        "action.right_arm",
+        "action.right_hand"
+    ]
+    
+    language_keys = ["annotation.human.task_description"]
+    observation_indices = [0]
+    action_indices = list(range(16))  # 16步动作序列
+    
+    def transform(self) -> ModalityTransform:
+        """定义数据变换流程"""
+        transforms = [
+            # 视频变换
+            VideoToTensor(apply_to=self.video_keys),
+            VideoCrop(apply_to=self.video_keys, scale=0.95),
+            VideoResize(
+                apply_to=self.video_keys, 
+                height=224, 
+                width=224, 
+                interpolation="linear"
+            ),
+            VideoColorJitter(
+                apply_to=self.video_keys,
+                brightness=0.3,
+                contrast=0.4,
+                saturation=0.5,
+                hue=0.08,
+            ),
+            VideoToNumpy(apply_to=self.video_keys),
+            
+            # 状态变换
+            StateActionToTensor(apply_to=self.state_keys),
+            StateActionTransform(
+                apply_to=self.state_keys,
+                normalization_modes={key: "min_max" for key in self.state_keys},
+            ),
+            
+            # 动作变换
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={key: "min_max" for key in self.action_keys},
+            ),
+            
+            # 连接变换
+            ConcatTransform(
+                video_concat_order=self.video_keys,
+                state_concat_order=self.state_keys,
+                action_concat_order=self.action_keys,
+            ),
+            
+            # GR00T特定变换
+            GR00TTransform(
+                state_horizon=len(self.observation_indices),
+                action_horizon=len(self.action_indices),
+                max_state_dim=64,  # 状态维度
+                max_action_dim=26,  # 动作维度 (26个关节: 左臂7+左手6+右臂7+右手6)
+            ),
+        ]
+        
+        return ComposedModalityTransform(transforms=transforms)
 ###########################################################################################
 
 
@@ -783,6 +1102,11 @@ DATA_CONFIG_MAP = {
     "so100_dualcam": So100DualCamDataConfig(),
     "unitree_g1": UnitreeG1DataConfig(),
     "unitree_g1_full_body": UnitreeG1FullBodyDataConfig(),
+    "G1_Dex3_xc":G1_Dex3_xc(), 
+    "G1_inspire_xc":G1_inspire_xc(),
+    "unitree_g1_inspire":UnitreeG1InspireDataConfig(),
+    "unitree_g1_inspire_2cameras":UnitreeG1InspireData_2cameras_Config(),
+
     "oxe_droid": OxeDroidDataConfig(),
     "agibot_genie1": AgibotGenie1DataConfig(),
 }

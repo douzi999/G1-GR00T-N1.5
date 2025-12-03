@@ -49,7 +49,7 @@ import tyro
 
 from gr00t.data.embodiment_tags import EMBODIMENT_TAG_MAPPING
 from gr00t.eval.robot import RobotInferenceClient, RobotInferenceServer
-from gr00t.experiment.data_config import load_data_config
+from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import Gr00tPolicy
 
 
@@ -57,24 +57,19 @@ from gr00t.model.policy import Gr00tPolicy
 class ArgsConfig:
     """Command line arguments for the inference service."""
 
-    model_path: str = "nvidia/GR00T-N1.5-3B"
+    model_path: str = "/mnt/data/gr00t_sj_output/"
     """Path to the model checkpoint directory."""
 
-    embodiment_tag: Literal[tuple(EMBODIMENT_TAG_MAPPING.keys())] = "gr1"
+    embodiment_tag: Literal[tuple(EMBODIMENT_TAG_MAPPING.keys())] = "new_embodiment"
     """The embodiment tag for the model."""
 
-    data_config: str = "fourier_gr1_arms_waist"
-    """
-    The name of the data config to use, e.g. so100, fourier_gr1_arms_only, unitree_g1, etc.
+    data_config: Literal[tuple(DATA_CONFIG_MAP.keys())] = "unitree_g1_inspire"
+    """The name of the data config to use."""
 
-    Or a path to a custom data config file. e.g. "module:ClassName" format.
-    See gr00t/experiment/data_config.py for more details.
-    """
-
-    port: int = 5555
+    port: int = 6666
     """The port number for the server."""
 
-    host: str = "localhost"
+    host: str = "0.0.0.0"
     """The host address for the server."""
 
     server: bool = False
@@ -151,7 +146,7 @@ def main(args: ArgsConfig):
         # if a new data config is specified, this expect user to
         # construct your own modality config and transform
         # see gr00t/utils/data.py for more details
-        data_config = load_data_config(args.data_config)
+        data_config = DATA_CONFIG_MAP[args.data_config]
         modality_config = data_config.modality_config()
         modality_transform = data_config.transform()
 
@@ -194,13 +189,16 @@ def main(args: ArgsConfig):
         # - action: action.right_hand: (16, 6)
         # - action: action.waist: (16, 3)
         obs = {
-            "video.ego_view": np.random.randint(0, 256, (1, 256, 256, 3), dtype=np.uint8),
+            # 4个摄像头数据 - 分辨率 (480, 640)
+            "video.cam_left_high": np.random.randint(0, 256, (1, 480, 640, 3), dtype=np.uint8),
+            #"video.cam_left_wrist": np.random.randint(0, 256, (1, 480, 640, 3), dtype=np.uint8),
+            "video.cam_right_high": np.random.randint(0, 256, (1, 480, 640, 3), dtype=np.uint8),
+            #"video.cam_right_wrist": np.random.randint(0, 256, (1, 480, 640, 3), dtype=np.uint8),
             "state.left_arm": np.random.rand(1, 7),
             "state.right_arm": np.random.rand(1, 7),
             "state.left_hand": np.random.rand(1, 6),
             "state.right_hand": np.random.rand(1, 6),
-            "state.waist": np.random.rand(1, 3),
-            "annotation.human.action.task_description": ["do your thing!"],
+            "annotation.human.action.task_description": ["pick the red cube on the table."],
         }
 
         if args.http_server:
@@ -210,6 +208,7 @@ def main(args: ArgsConfig):
 
         for key, value in action.items():
             print(f"Action: {key}: {value.shape}")
+            print(f"Action: {value}")
     else:
         raise ValueError("Please specify either --server or --client")
 
